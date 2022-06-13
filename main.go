@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 )
@@ -34,7 +36,7 @@ func main() {
 	// }
 
 	// fmt.Println("back into a go data structure: ", xp2)
-
+	fmt.Printf(base64.StdEncoding.EncodeToString([]byte("user:pass")))
 	http.HandleFunc("/encode", foo)
 	http.HandleFunc("/decode", bar)
 	http.ListenAndServe(":8080", nil)

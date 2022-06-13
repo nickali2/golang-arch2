@@ -6,12 +6,11 @@ import (
 	"net/http"
 )
 
-type person struct{
+type person struct {
 	First string `json:"first"`
 }
 
-
-func main(){
+func main() {
 	// p1 := person{
 	// 	First: "John",
 	// }
@@ -38,25 +37,30 @@ func main(){
 
 	http.HandleFunc("/encode", foo)
 	http.HandleFunc("/decode", bar)
-	http.ListenAndServe(":8080",nil)
-	
+	http.ListenAndServe(":8080", nil)
 
 }
 
-
-
-func foo(w http.ResponseWriter, r *http.Request){
+func foo(w http.ResponseWriter, r *http.Request) {
+	//encoding
 	p1 := person{
 		First: "John",
 	}
 
 	err := json.NewEncoder(w).Encode(p1)
-	if err != nil{
+	if err != nil {
 		log.Println("something bad! ", err)
 	}
-	
+
 }
 
-func bar(w http.ResponseWriter,  r*http.Request){
-	
+func bar(w http.ResponseWriter, r *http.Request) {
+	//decoder
+	var p1 person
+	err := json.NewDecoder(r.Body).Decode(&p1)
+	if err != nil {
+		log.Println("bad data!, ", err)
+	}
+
+	log.Println("person: ", p1)
 }

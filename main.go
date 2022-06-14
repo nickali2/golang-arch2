@@ -4,11 +4,28 @@ import (
 	"crypto/hmac"
 	"crypto/sha512"
 	"fmt"
+	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 	"log"
+	"time"
 )
 
 var key = "12378956"
+
+type userClaims struct {
+	jwt.RegisteredClaims
+	SessionID int64
+}
+
+func (u *userClaims) valid() error {
+	if !u.VerifyExpiresAt(time.Now(), true) {
+		return fmt.Errorf("Token has expired")
+	}
+	if u.SessionID == 0 {
+		return fmt.Errorf("invalid session ID")
+	}
+	return nil
+}
 
 func main() {
 	pass := "123456789"

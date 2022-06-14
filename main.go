@@ -1,68 +1,70 @@
 package main
 
 import (
-	"encoding/base64"
-	"encoding/json"
+	"crypto/hmac"
+	"crypto/sha512"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 	"log"
-	"net/http"
 )
 
-type person struct {
-	First string `json:"first"`
-}
+var key = "12378956"
 
 func main() {
-	// p1 := person{
-	// 	First: "John",
-	// }
-	// p2:= person{
-	// 	First: "jenny",
-	// }
+	pass := "123456789"
 
-	// xp := []person{p1,p2}
+	hash, err := hashPassword(pass)
+	if err != nil {
+		panic(err)
+	}
 
-	// bs, er := json.Marshal(xp)
-	// if er!= nil{
-	// 	log.Panic(er)
-	// }
-	// fmt.Println(string(bs))
+	err = comparePasswors(pass, hash)
+	if err != nil {
+		log.Fatalln("not logged in")
+	}
+	log.Println("Succesfully logged in")
 
-	// xp2:= []person{}
+	//mac := hmac.New(sha512.New, []byte("123456"))
+	//mac.Write([]byte("hello"))
+	//exmac := mac.Sum(nil)
+	//fmt.Println(len(exmac))
+}
 
-	// err := json.Unmarshal(bs, &xp2)
-	// if err != nil{
-	// 	log.Panic(err)
-	// }
+func hashPassword(password string) ([]byte, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, fmt.Errorf("there is an error making hash from password: %w", err)
 
-	// fmt.Println("back into a go data structure: ", xp2)
-	fmt.Printf(base64.StdEncoding.EncodeToString([]byte("user:pass")))
-	http.HandleFunc("/encode", foo)
-	http.HandleFunc("/decode", bar)
-	http.ListenAndServe(":8080", nil)
+	}
+
+	return hash, nil
 
 }
 
-func foo(w http.ResponseWriter, r *http.Request) {
-	//encoding
-	p1 := person{
-		First: "John",
-	}
-
-	err := json.NewEncoder(w).Encode(p1)
+func comparePasswors(passwors string, hash []byte) error {
+	err := bcrypt.CompareHashAndPassword(hash, []byte(passwors))
 	if err != nil {
-		log.Println("something bad! ", err)
+		return fmt.Errorf("invalid passwors: %w", err)
 	}
-
+	return nil
 }
 
-func bar(w http.ResponseWriter, r *http.Request) {
-	//decoder
-	var p1 person
-	err := json.NewDecoder(r.Body).Decode(&p1)
+func getMAC(message string) ([]byte, error) {
+	mac := hmac.New(sha512.New, []byte(key))
+	_, err := mac.Write([]byte(message))
 	if err != nil {
-		log.Println("bad data!, ", err)
+		return nil, fmt.Errorf("error in getMac write message while hashing: %w", err)
+	}
+	excpectedmac := mac.Sum(nil)
+	return excpectedmac, nil
+
+}
+func checkMAC(expMAC, msg []byte) (bool, error) {
+	newmac, err := getMAC(string(msg))
+	if err != nil {
+		return false, fmt.Errorf("there is eror in check mac while getting mac of new msg: %w", err)
 	}
 
-	log.Println("person: ", p1)
+	b := hmac.Equal(newmac, expMAC)
+	return b, nil
 }

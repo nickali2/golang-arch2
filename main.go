@@ -17,7 +17,7 @@ type userClaims struct {
 	SessionID int64
 }
 
-func (u *userClaims) valid() error {
+func (u *userClaims) Valid() error {
 	if !u.VerifyExpiresAt(time.Now(), true) {
 		return fmt.Errorf("Token has expired")
 	}
@@ -27,6 +27,18 @@ func (u *userClaims) valid() error {
 	return nil
 }
 
+//this method creates new token
+func crateToken(u *userClaims) (string, error) {
+	//this is creting token insinde
+	token := jwt.NewWithClaims(jwt.SigningMethodHS512, u)
+
+	signedtoken, err := token.SignedString([]byte(key))
+	if err != nil {
+		return "", fmt.Errorf("error in create token when signingtoken , %w", err)
+	}
+	return signedtoken, nil
+
+}
 func main() {
 	pass := "123456789"
 
@@ -45,9 +57,15 @@ func main() {
 	//mac.Write([]byte("hello"))
 	//exmac := mac.Sum(nil)
 	//fmt.Println(len(exmac))
+
 }
 
+// create hash string.
+// gie s password in string.
+// return hashes strin in []byte and possibleerro.
+// if there is no error return nil as error.
 func hashPassword(password string) ([]byte, error) {
+
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("there is an error making hash from password: %w", err)

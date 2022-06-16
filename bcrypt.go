@@ -1,5 +1,10 @@
 package main
 
+import (
+	"encoding/base64"
+	"fmt"
+)
+
 //
 //import (
 //	"fmt"
@@ -40,3 +45,16 @@ package main
 //	}
 //	return nil
 //}
+
+func main() {
+
+	src := "dXNlcjpwYXNz"
+	des := make([]byte, base64.StdEncoding.DecodedLen(len(src)))
+	i, err := base64.StdEncoding.Decode(des, []byte(src))
+	if err != nil {
+		fmt.Errorf("error in decodeing, %w", err)
+	}
+
+	fmt.Println(string(des), i)
+
+}

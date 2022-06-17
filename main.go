@@ -39,6 +39,45 @@ func main() {
 }
 
 func encod(key []byte, input string) ([]byte, []byte, error) {
+	//b, errr := aes.NewCipher(key)
+	//if errr != nil {
+	//	return nil, nil, fmt.Errorf("error in newcier, %w", errr)
+	//}
+	////initialig vector
+	////iv := []byte(string(aes.BlockSize))
+	//
+	////initializingvector
+	//iv := make([]byte, aes.BlockSize)
+	////put random numbers in iv
+	//_, err := io.ReadFull(rand.Reader, iv)
+	//if err != nil {
+	//	return nil, nil, fmt.Errorf("error in random, %w", err)
+	//}
+	buff := &bytes.Buffer{}
+	//s := cipher.NewCTR(b, iv)
+	//sw := cipher.StreamWriter{
+	//	S:   s,
+	//	W:   buff,
+	//	Err: nil,
+	//}
+
+	sw, iv, err := encrypWriter(key, buff)
+	if err != nil {
+		return nil, iv, fmt.Errorf("eror in write cipher , %w", err)
+	}
+	_, err = sw.Write([]byte(input))
+	if err != nil {
+		return nil, iv, fmt.Errorf("eror in write cipher , %w", err)
+	}
+
+	return buff.Bytes(), iv, nil
+
+}
+
+//get a key and io.writer and create cipher.
+//return iowriter, iv, and an error if exists.
+//iv used in decrypting
+func encrypWriter(key []byte, wtr io.Writer) (io.Writer, []byte, error) {
 	b, errr := aes.NewCipher(key)
 	if errr != nil {
 		return nil, nil, fmt.Errorf("error in newcier, %w", errr)
@@ -50,22 +89,17 @@ func encod(key []byte, input string) ([]byte, []byte, error) {
 	iv := make([]byte, aes.BlockSize)
 	//put random numbers in iv
 	_, err := io.ReadFull(rand.Reader, iv)
-	buff := &bytes.Buffer{}
+	if err != nil {
+		return nil, nil, fmt.Errorf("error in random, %w", err)
+	}
+	//buff := &bytes.Buffer{}
 	s := cipher.NewCTR(b, iv)
-	sw := cipher.StreamWriter{
+	return cipher.StreamWriter{
 		S:   s,
-		W:   buff,
+		W:   wtr,
 		Err: nil,
-	}
-	_, err = sw.Write([]byte(input))
-	if errr != nil {
-		return nil, iv, fmt.Errorf("eror in write cipher , %w", err)
-	}
-
-	return buff.Bytes(), iv, nil
-
+	}, iv, nil
 }
-
 func decod(key []byte, ivin []byte, input string) ([]byte, error) {
 	b, errr := aes.NewCipher(key)
 	if errr != nil {

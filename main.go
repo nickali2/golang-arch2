@@ -1,98 +1,76 @@
 package main
 
 import (
-	"crypto/hmac"
 	"fmt"
-	"github.com/golang-jwt/jwt/v4"
-	"io"
+	"golang.org/x/crypto/bcrypt"
 	"net/http"
-	"strings"
-	"time"
+	"net/url"
 )
 
 func main() {
-	http.HandleFunc("/", firsthandler)
-	http.HandleFunc("/submit", bar)
-	http.ListenAndServe(":8080", nil)
-}
-func getJwt(msg string) (string, error) {
-	key := "ILOVEDOGD"
-	type myClaims struct {
-		jwt.RegisteredClaims
-		Email string `json:"email"`
-	}
-	claims := myClaims{
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
-		},
-		Email: msg,
-	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodES512, &claims)
-	ss, err := token.SignedString(key)
-	if err != nil {
-		return "", fmt.Errorf("couldn't signing jwt key, %w", err)
-	}
-	return ss, nil
+	http.HandleFunc("/", defaul)
+	http.HandleFunc("/register", register)
+
+	http.ListenAndServe("localhost:8080", nil)
 }
-func bar(w http.ResponseWriter, r *http.Request) {
+
+func defaul(w http.ResponseWriter, r *http.Request) {
+	errmsg := r.FormValue("errormsg")
+	username := r.FormValue("erruse")
+	password := r.FormValue("errorpass")
+
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>hello</title>
+</head>
+<body>
+<p>%s</p>
+<p>%s</p>
+<p>%s</p>
+<form action="/register" method="post">
+    <input name="username" type="text" >
+    <input name="password" type="password">
+    <input name="register" type="submit">
+</form>
+</body>
+</html>`, errmsg, username, password)
+	//io.WriteString(w, html)
+}
+
+type userdata struct {
+	User map[string][]byte `json:"user"`
+}
+
+func register(w http.ResponseWriter, r *http.Request) {
+	db := userdata{}
 	if r.Method != http.MethodPost {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		erruse := url.QueryEscape("methos was not post")
+		http.Redirect(w, r, "/?errormsg="+erruse, http.StatusSeeOther)
+		return
+	}
+	username := r.FormValue("username")
+	if username == "" {
+		errmsg := url.QueryEscape("username cannot be empty!")
+		http.Redirect(w, r, "/?errormsg="+errmsg, http.StatusSeeOther)
+		return
+	}
+	password := r.FormValue("password")
+	if password == "" {
+		errpass := url.QueryEscape("password cannot be empty!")
+		http.Redirect(w, r, "/?errormsg="+errpass, http.StatusSeeOther)
 		return
 	}
 
-	email := r.FormValue("email")
-	if email == "" {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
-		return
-	}
-	ss, err := getJwt(email)
+	hashpass, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.MaxCost)
 	if err != nil {
-		http.Error(w, "couldn't get jwt", http.StatusInternalServerError)
+		http.Error(w, "Ooops!, try again!", http.StatusInternalServerError)
 		return
 	}
-	c := http.Cookie{Name: "session", Value: ss + "|" + email}
-	http.SetCookie(w, &c)
+
+	db.User[username] = hashpass
+
 	http.Redirect(w, r, "/", http.StatusSeeOther)
-}
-
-func firsthandler(w http.ResponseWriter, r *http.Request) {
-	c, err := r.Cookie("session")
-	if err != nil {
-		c = &http.Cookie{}
-	}
-	isEqual := true
-	xs := strings.SplitN(c.Value, "|", 2)
-	if len(xs) == 2 {
-		cCode := xs[0]
-		cEmail := xs[1]
-
-		code, err := getJwt(cEmail)
-		if err != nil {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
-		}
-		isEqual = hmac.Equal([]byte(cCode), []byte(code))
-	}
-	message := "not logged in"
-	if isEqual {
-		message = "logged in"
-	}
-	html := `<!DOCTYPE html>
-		<html lang="en">
-		<head>
-			<meta charset="UTF-8">
-			<title>hmac example</title>
-		</head>
-		<body>
-		<h1>hello!/<h1>
-<p> cookie value: ` + c.Value + ` </p>
-<p>` + message + `</p>
-		<form action = "/submit" method = "POST">
-			<input type="email" name="email"/>
-			<input type="submit"/>
-		</form>
-		
-		</body>
-		</html>`
-	io.WriteString(w, html)
 }

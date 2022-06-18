@@ -2,11 +2,12 @@ package main
 
 import (
 	"crypto/hmac"
-	"crypto/sha512"
 	"fmt"
+	"github.com/golang-jwt/jwt/v4"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -14,10 +15,25 @@ func main() {
 	http.HandleFunc("/submit", bar)
 	http.ListenAndServe(":8080", nil)
 }
-func getCode(msg string) string {
-	h := hmac.New(sha512.New, []byte("hello"))
-	h.Write([]byte(msg))
-	return fmt.Sprintf("%x", h.Sum(nil))
+func getJwt(msg string) (string, error) {
+	key := "ILOVEDOGD"
+	type myClaims struct {
+		jwt.RegisteredClaims
+		Email string `json:"email"`
+	}
+	claims := myClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute)),
+		},
+		Email: msg,
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodES512, &claims)
+	ss, err := token.SignedString(key)
+	if err != nil {
+		return "", fmt.Errorf("couldn't signing jwt key, %w", err)
+	}
+	return ss, nil
 }
 func bar(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -30,8 +46,12 @@ func bar(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
-	code := getCode(email)
-	c := http.Cookie{Name: "session", Value: code + "|" + email}
+	ss, err := getJwt(email)
+	if err != nil {
+		http.Error(w, "couldn't get jwt", http.StatusInternalServerError)
+		return
+	}
+	c := http.Cookie{Name: "session", Value: ss + "|" + email}
 	http.SetCookie(w, &c)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -47,7 +67,10 @@ func firsthandler(w http.ResponseWriter, r *http.Request) {
 		cCode := xs[0]
 		cEmail := xs[1]
 
-		code := getCode(cEmail)
+		code, err := getJwt(cEmail)
+		if err != nil {
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+		}
 		isEqual = hmac.Equal([]byte(cCode), []byte(code))
 	}
 	message := "not logged in"

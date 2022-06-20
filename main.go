@@ -5,13 +5,19 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"fmt"
+	"github.com/gofrs/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
 )
 
+//db srote key:password , password is bcrypt hash
 var db = map[string][]byte{}
+
+//store sID:username (sessionid) in sessions
+var sessions = map[string]string{}
 
 func main() {
 
@@ -23,6 +29,20 @@ func main() {
 }
 
 func defaul(w http.ResponseWriter, r *http.Request) {
+	c, err := r.Cookie("SessionID")
+	if err != nil {
+		c = &http.Cookie{Name: "SessionID", Value: ""}
+	}
+
+	s, err := parseToken(c.Value)
+
+	if err != nil {
+		log.Println("error index", err)
+	}
+	var uname string
+	if s != "" {
+		uname = sessions[s]
+	}
 	errmsg := r.FormValue("errormsg")
 	//username := r.FormValue("errormsg")
 	//password := r.FormValue("errormsg")
@@ -34,7 +54,8 @@ func defaul(w http.ResponseWriter, r *http.Request) {
     <title>hello</title>
 </head>
 <body>
-<p>error: %s</p>
+<p>if there is error: %s</p>
+<p>if you have session, here is username: %s</p>
 <h1 >register</h1>
 <form action="/register" method="post">
     <input name="username" type="text" >
@@ -49,7 +70,7 @@ func defaul(w http.ResponseWriter, r *http.Request) {
 
 </form>
 </body>
-</html>`, errmsg)
+</html>`, errmsg, uname)
 	//io.WriteString(w, html)
 }
 
@@ -120,6 +141,14 @@ func login(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?errormsg="+errmsg, http.StatusSeeOther)
 		return
 	}
+
+	uuid, _ := uuid.NewV4()
+	suuid := uuid.String()
+	sessions[suuid] = username
+	token := createToken(suuid)
+	c := http.Cookie{Name: "SessionID", Value: token}
+	http.SetCookie(w, &c)
+
 	errmsg := url.QueryEscape("Logged IN! " + username)
 	http.Redirect(w, r, "/?errormsg="+errmsg, http.StatusSeeOther)
 }
@@ -140,7 +169,7 @@ func createToken(sid string) string {
 
 //return session id
 //get token and seprate signature from session id
-func parseToken(token string, msg string) (string, error) {
+func parseToken(token string) (string, error) {
 	s := strings.SplitN(token, "|", 2)
 	//checking to ensure split return 2 parts
 	if len(s) != 2 {

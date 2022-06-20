@@ -13,8 +13,14 @@ import (
 	"strings"
 )
 
-//db srote key:password , password is bcrypt hash
-var db = map[string][]byte{}
+//user store password in bcrypted hash and first
+type user struct {
+	Password []byte
+	First    string
+}
+
+//db srote key:user , password is bcrypt hash
+var db = map[string]user{}
 
 //store sID:username (sessionid) in sessions
 var sessions = map[string]string{}
@@ -43,6 +49,10 @@ func defaul(w http.ResponseWriter, r *http.Request) {
 	if s != "" {
 		uname = sessions[s]
 	}
+	var f string
+	if user, ok := db[uname]; ok {
+		f = user.First
+	}
 	errmsg := r.FormValue("errormsg")
 	//username := r.FormValue("errormsg")
 	//password := r.FormValue("errormsg")
@@ -56,8 +66,11 @@ func defaul(w http.ResponseWriter, r *http.Request) {
 <body>
 <p>if there is error: %s</p>
 <p>if you have session, here is username: %s</p>
+<p>if you have session, here is firstname: %s</p>
 <h1 >register</h1>
 <form action="/register" method="post">
+	<label for="first">First</label>
+    <input name="first" type="text" placeholder="First" id="first" >
     <input name="username" type="text" >
     <input name="password" type="password">
     <input name="register" type="submit">
@@ -70,7 +83,7 @@ func defaul(w http.ResponseWriter, r *http.Request) {
 
 </form>
 </body>
-</html>`, errmsg, uname)
+</html>`, errmsg, uname, f)
 	//io.WriteString(w, html)
 }
 
@@ -100,13 +113,23 @@ func register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	first := r.FormValue("first")
+	if first == "" {
+		errpass := url.QueryEscape("first name cannot be empty!")
+		http.Redirect(w, r, "/?errormsg="+errpass, http.StatusSeeOther)
+		return
+	}
+
 	hashpass, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		http.Error(w, "Ooops!, try again!", http.StatusInternalServerError)
 		return
 	}
 
-	db[username] = hashpass
+	db[username] = user{
+		Password: hashpass,
+		First:    first,
+	}
 
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -130,12 +153,14 @@ func login(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/?errormsg="+errpass, http.StatusSeeOther)
 		return
 	}
+	//is there s username in database?
 	if _, ok := db[username]; !ok {
 		errmsg := url.QueryEscape("username or password is not correct")
 		http.Redirect(w, r, "/?errormsg="+errmsg, http.StatusSeeOther)
 		return
 	}
-	err := bcrypt.CompareHashAndPassword(db[username], []byte(password))
+	//hash password of a user
+	err := bcrypt.CompareHashAndPassword(db[username].Password, []byte(password))
 	if err != nil {
 		errmsg := url.QueryEscape("username or password is not correct")
 		http.Redirect(w, r, "/?errormsg="+errmsg, http.StatusSeeOther)

@@ -1,15 +1,12 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"github.com/gofrs/uuid"
-	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
 	"net/url"
-	"time"
 )
 
 //key using for token creation and signing messages
@@ -27,16 +24,12 @@ var db = map[string]user{}
 //store sID:username (sessionid) in sessions
 var sessions = map[string]string{}
 
-type customeClaims struct {
-	jwt.RegisteredClaims
-	SID string
-}
-
 func main() {
 
 	http.HandleFunc("/", defaul)
 	http.HandleFunc("/register", register)
 	http.HandleFunc("/login", login)
+	http.HandleFunc("/logout", logout)
 
 	http.ListenAndServe("localhost:8080", nil)
 }
@@ -88,6 +81,9 @@ func defaul(w http.ResponseWriter, r *http.Request) {
     <input name="password" type="password">
     <input name="login" type="submit">
 
+</form>
+<form action="/logout" method="post">
+    <input type="submit" value="logout">
 </form>
 </body>
 </html>`, errmsg, uname, f)
@@ -191,37 +187,31 @@ func login(w http.ResponseWriter, r *http.Request) {
 	errmsg := url.QueryEscape("Logged IN! " + username)
 	http.Redirect(w, r, "/?errormsg="+errmsg, http.StatusSeeOther)
 }
-func createToken(sid string) (string, error) {
 
-	myClaim := customeClaims{
-		RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute))},
-		SID:              sid,
+func logout(w http.ResponseWriter, r *http.Request) {
+	//never use get for logout, using a get for logout could be a vulnarability.
+	//eg. use get in tag of img!
+	if r.Method != http.MethodPost {
+		errmsg := url.QueryEscape("methos was not post")
+		http.Redirect(w, r, "/?errormsg="+errmsg, http.StatusSeeOther)
+		return
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS512, myClaim)
-	str, err := token.SignedString(key)
+	c, err := r.Cookie("SessionID")
 	if err != nil {
-		return "", fmt.Errorf("couldn't sign token, %w", err)
+		c = &http.Cookie{Name: "SessionID", Value: ""}
 	}
-	return str, nil
 
-}
+	sID, err := parseToken(c.Value)
 
-//return session id
-//get token and seprate signature from session id
-func parseToken(signedToken string) (string, error) {
-	token, er := jwt.ParseWithClaims(signedToken, &customeClaims{}, func(token *jwt.Token) (interface{}, error) {
-		if token.Method.Alg() != jwt.SigningMethodHS512.Alg() {
-			return nil, errors.New("encryption algorithm is not valid!")
-		}
-		return key, nil
-	})
-
-	//err will check at default index page, so return error and nil string
-	if er != nil {
-		return "", fmt.Errorf("couldn't parseclaims in parsetoken, %w", er)
+	if err != nil {
+		log.Println("error index", err)
 	}
-	if !token.Valid {
-		return "", fmt.Errorf("token not valid in parsetoken")
-	}
-	return token.Claims.(*customeClaims).SID, nil
+	//delete sid from sessions
+	delete(sessions, sID)
+
+	//get rid of cookie
+	c.MaxAge = -1
+
+	http.SetCookie(w, c)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }

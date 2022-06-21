@@ -1,17 +1,19 @@
 package main
 
 import (
-	"crypto/hmac"
-	"crypto/sha512"
-	"encoding/base64"
+	"errors"
 	"fmt"
 	"github.com/gofrs/uuid"
+	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
 	"net/url"
-	"strings"
+	"time"
 )
+
+//key using for token creation and signing messages
+var key = []byte("my love is here and  i will go vacation in the summer")
 
 //user store password in bcrypted hash and first
 type user struct {
@@ -24,6 +26,11 @@ var db = map[string]user{}
 
 //store sID:username (sessionid) in sessions
 var sessions = map[string]string{}
+
+type customeClaims struct {
+	jwt.RegisteredClaims
+	SID string
+}
 
 func main() {
 
@@ -40,14 +47,14 @@ func defaul(w http.ResponseWriter, r *http.Request) {
 		c = &http.Cookie{Name: "SessionID", Value: ""}
 	}
 
-	s, err := parseToken(c.Value)
+	sID, err := parseToken(c.Value)
 
 	if err != nil {
 		log.Println("error index", err)
 	}
 	var uname string
-	if s != "" {
-		uname = sessions[s]
+	if sID != "" {
+		uname = sessions[sID]
 	}
 	var f string
 	if user, ok := db[uname]; ok {
@@ -170,53 +177,51 @@ func login(w http.ResponseWriter, r *http.Request) {
 	uuid, _ := uuid.NewV4()
 	suuid := uuid.String()
 	sessions[suuid] = username
-	token := createToken(suuid)
+	token, err := createToken(suuid)
+	if err != nil {
+		log.Println("server cannot create jwt token! check it! maybe!", err)
+		errmsg := url.QueryEscape("server didn't  get enough launch right now, and is not ready. try back later!")
+		http.Redirect(w, r, "/?errormsg="+errmsg, http.StatusSeeOther)
+		return
+
+	}
 	c := http.Cookie{Name: "SessionID", Value: token}
 	http.SetCookie(w, &c)
 
 	errmsg := url.QueryEscape("Logged IN! " + username)
 	http.Redirect(w, r, "/?errormsg="+errmsg, http.StatusSeeOther)
 }
-func createToken(sid string) string {
-	key := []byte("my love is here and  i will go vacation in the summer")
-	mac := hmac.New(sha512.New, key)
-	_, er := mac.Write([]byte(sid))
-	if er != nil {
-		fmt.Errorf("error, %w", er)
-	}
-	//to hex
-	//token := fmt.Sprintf("%x", mac.Sum(nil))
+func createToken(sid string) (string, error) {
 
-	//to base64
-	token := base64.StdEncoding.EncodeToString(mac.Sum(nil))
-	return token + "|" + sid
+	myClaim := customeClaims{
+		RegisteredClaims: jwt.RegisteredClaims{ExpiresAt: jwt.NewNumericDate(time.Now().Add(5 * time.Minute))},
+		SID:              sid,
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS512, myClaim)
+	str, err := token.SignedString(key)
+	if err != nil {
+		return "", fmt.Errorf("couldn't sign token, %w", err)
+	}
+	return str, nil
+
 }
 
 //return session id
 //get token and seprate signature from session id
-func parseToken(token string) (string, error) {
-	s := strings.SplitN(token, "|", 2)
-	//checking to ensure split return 2 parts
-	if len(s) != 2 {
-		return "", fmt.Errorf("stop hacking me!")
-	}
-	b64 := s[0]
-	xs, err := base64.StdEncoding.DecodeString(b64)
-	if err != nil {
-		return "", fmt.Errorf("error in parsetoken while decoding base64 token, %w", err)
-	}
-	key := []byte("my love is here and  i will go vacation in the summer")
-	mac := hmac.New(sha512.New, key)
-	_, er := mac.Write([]byte(s[1]))
+func parseToken(signedToken string) (string, error) {
+	token, er := jwt.ParseWithClaims(signedToken, &customeClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if token.Method.Alg() != jwt.SigningMethodHS512.Alg() {
+			return nil, errors.New("encryption algorithm is not valid!")
+		}
+		return key, nil
+	})
+
+	//err will check at default index page, so return error and nil string
 	if er != nil {
-		fmt.Errorf("error, %w", er)
+		return "", fmt.Errorf("couldn't parseclaims in parsetoken, %w", er)
 	}
-
-	newtoken := mac.Sum(nil)
-	ok := hmac.Equal(xs, newtoken)
-	if !ok {
-		return "", fmt.Errorf("not equal sid")
+	if !token.Valid {
+		return "", fmt.Errorf("token not valid in parsetoken")
 	}
-	return s[1], nil
-
+	return token.Claims.(*customeClaims).SID, nil
 }
